@@ -5,10 +5,13 @@
 #   ansible-playbook -i inventory.ini deploy.yml --limit dev
 #
 # Model: PUSH. The control node holds the repo; targets never clone and never pull.
-# Every deployed path is a real file, not a symlink, with two deliberate exceptions
-# noted below. A `git pull` on a target does not update its live profile, and a
-# hand-edit to a deployed file is overwritten by the next run. Running this playbook
-# in --check --diff mode is therefore also the drift detector.
+# Every deployed path is a real file, not a symlink, with one deliberate exception:
+# the runtime memory rule, annotated at the task that links it. One further path,
+# ~/.agent-profile/MEMORY.md, is not deployed at all -- stubbed when absent and
+# otherwise left alone, so a host that links it to a live source keeps that link.
+# A `git pull` on a target does not update its live profile, and a hand-edit to a
+# deployed file is overwritten by the next run. Running this playbook in --check
+# --diff mode is therefore also the drift detector.
 #
 # Push rather than pull because at least one target cannot resolve the internal Git
 # host, has no ansible, and its home is not a Git repository.
@@ -179,6 +182,11 @@
     # ---------------------------------------------------------- host-local ---
     # Never tracked, never overwritten. Created empty so a fresh checkout on a new
     # box resolves cleanly instead of failing on a missing file.
+    #
+    # force: false is what makes these stubs rather than deploys. MEMORY.md in
+    # particular is a symlink to a live memory source on some hosts; skipping an
+    # existing dest is what preserves that link. The dangling-symlink guard above
+    # covers the one case where the stat lies about it.
 
     - name: Create host-local runtime memory if absent
       ansible.builtin.copy:

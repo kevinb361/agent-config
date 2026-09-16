@@ -2,6 +2,12 @@
 
 Portable AI agent configuration, pushed to every box from one repo.
 
+The content is one operator's. `CLAUDE.md` is a working agreement, `profile/` is style,
+durable facts and a visual baseline; fork the repo and replace both. What is meant to be
+reused is the mechanism: the push model, the rules-directory layout, the removal of the
+layers it supersedes, and a gate that keeps personal content out of a repo that gets
+published.
+
 ## Model
 
 **Push, not pull.** The control node holds this repo and writes real files to each
@@ -19,7 +25,19 @@ Two consequences worth stating plainly:
 
 Deployed paths are real files rather than symlinks because desktop sessions skip a user
 rules directory that is itself a symlink, or a rule file pointing outside the working
-directory. There are exactly two deliberate exceptions, both documented in `deploy.yml`.
+directory.
+
+Two paths are symlinks anyway, for different reasons:
+
+- `~/.claude/rules/03-memory.md` is deployed as a link to the host's live memory source.
+  Runtime memory changes while sessions run, so a copy would be a stale snapshot the
+  moment it landed. The cost is real: a desktop session that skips symlinked rules will
+  not see memory. The CLI does.
+- `~/.agent-profile/MEMORY.md` is never deployed at all. The playbook writes a stub when
+  the file is absent and otherwise leaves it alone, so a host that has already pointed it
+  at a live memory source keeps that link.
+
+Both are annotated where they happen in `deploy.yml`.
 
 ## Layout
 
@@ -34,12 +52,18 @@ profile/
 skills/
   design-baseline/SKILL.md     the visual baseline, loaded on demand
 tools/
-  sync-agent-profile           generates the Codex global instruction bundle
+  sync-agent-profile           regenerates the Codex instruction snapshot; the
+                               playbook does not run it, see below
   scrub-check.sh               fails if personal content reaches the tree,
                                its history or its commit messages
 deploy.yml                     the push playbook
 inventory.example.ini          example inventory
 ```
+
+`tools/sync-agent-profile` is deliberately outside the deploy. Codex reads one generated
+file at `~/.codex/AGENTS.md` rather than a rules directory, so that snapshot goes stale on
+a profile change and has to be rebuilt. Run it by hand on hosts that run Codex; hosts that
+do not never need it.
 
 Host overlays, host backups and the real inventory live in a separate private repo,
 cloned beside this one on the control node. They name real infrastructure, so keeping
@@ -60,8 +84,8 @@ public/private split over the same files. `deploy.yml` finds them via
 | `~/.claude/rules/20-host.md` | real file | `<private repo>/hosts/<host>/CLAUDE.local.md` |
 | `~/AGENTS.md` | real file | `CLAUDE.md`, for non-Claude harnesses |
 | `~/.agent-profile/{SOUL,USER,DESIGN,README}.md`, `adapters/` | real files | `profile/` |
-| `~/.agent-profile/MEMORY.md` | untouched | host-local, never tracked, never overwritten |
-| `~/private/USER.local.md` | untouched | host-local personal context, never tracked |
+| `~/.agent-profile/MEMORY.md` | stub if absent | host-local, never tracked, never overwritten |
+| `~/private/USER.local.md` | stub if absent | host-local personal context, never tracked |
 | `~/.claude/skills/design-baseline/SKILL.md` | real file | `skills/` |
 
 The playbook also **removes** `~/CLAUDE.md`, `~/.claude/CLAUDE.md` and the five rules
@@ -75,6 +99,8 @@ file. It is ~240 lines relevant only to UI work; it lives in a skill instead.
 ## Deploy
 
 ```sh
+cp inventory.example.ini inventory.ini    # real hostnames; gitignored, never committed
+
 # always look first -- this is also the drift check
 ansible-playbook -i inventory.ini deploy.yml --check --diff
 
@@ -82,7 +108,8 @@ ansible-playbook -i inventory.ini deploy.yml --limit dev
 ```
 
 The control node needs ansible, this repo, and SSH to every target. Targets need none
-of those.
+of those. The playbook uses only `ansible.builtin` modules, so there is no collection to
+install and no `requirements.yml` to keep current.
 
 ## Adding a box
 
@@ -120,8 +147,12 @@ exists to catch. A missing list fails the gate rather than passing silently.
 
 ```sh
 ls -la ~/.claude/rules/                     # exactly the intended set, no leftovers
-ansible-playbook -i inventory.ini deploy.yml --check   # a clean second run means no drift
+ansible-playbook -i inventory.ini deploy.yml --check --diff
 ```
+
+A second run is never reported as fully clean: this run's timestamped backup directory
+is always a change. That one aside, every deployed path should come back `ok`. Anything
+else reported as changed is drift, and the diff says what moved.
 
 Then start a session and confirm it reports the expected rules and no duplicates. File
 listings prove what is on disk; only a real session proves what actually loads.
