@@ -53,7 +53,11 @@
     agent_skills:
       - design-baseline
 
-    # Rules files this play owns, as {name, src}. Numbering sets load order.
+    # Rules files this play owns, as {name, src}. The numeric prefixes group these
+    # for humans; they do NOT set load order. Measured on Claude Code 2.1.273 with
+    # the InstructionsLoaded hook, the user rules directory loads its files in no
+    # stable order -- four runs on one host gave four different orders. Anything
+    # that depends on precedence has to say so in the text of the file itself.
     agent_rules:
       - { name: 00-soul.md,          src: profile/SOUL.md }
       - { name: 01-user.md,          src: profile/USER.md }

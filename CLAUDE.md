@@ -1,7 +1,9 @@
 # Shared agent working agreement
 
 Common layer, deployed identically to every box from the agent-config repo.
-Host-specific additions live in the host overlay, which loads after this file.
+Host-specific additions live in the host overlay; where it and this file disagree, the
+overlay wins. Rules files load in no guaranteed order, so precedence is stated here in
+the text rather than implied by a filename prefix.
 Current user instructions and project-local constraints take precedence over general defaults.
 Profile files describe preferences, not live system state or permission to mutate infrastructure.
 
