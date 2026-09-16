@@ -58,6 +58,7 @@ tools/
                                its history or its commit messages
 deploy.yml                     the push playbook
 inventory.example.ini          example inventory
+LICENSE                        MIT
 ```
 
 `tools/sync-agent-profile` is deliberately outside the deploy. Codex reads one generated
@@ -156,3 +157,7 @@ else reported as changed is drift, and the diff says what moved.
 
 Then start a session and confirm it reports the expected rules and no duplicates. File
 listings prove what is on disk; only a real session proves what actually loads.
+
+## License
+
+MIT. The mechanism is the part worth copying; take it and replace the content.
