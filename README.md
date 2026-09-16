@@ -20,7 +20,7 @@ inventory.example.ini          example inventory
 
 | Path | Type | Source |
 |---|---|---|
-| `~/git/agent-config` | clone | this repo |
+| `~/projects/agent-config` | clone | this repo |
 | `~/CLAUDE.md` | symlink | `repo/CLAUDE.md` |
 | `~/AGENTS.md` | symlink | `~/CLAUDE.md` |
 | `~/CLAUDE.local.md` | symlink | `repo/hosts/<host>/CLAUDE.local.md` |
@@ -30,7 +30,7 @@ inventory.example.ini          example inventory
 | `~/.agent-profile/MEMORY.md` | real file | created empty, never tracked, never overwritten |
 
 Because every deployed path is a symlink into the clone, `git pull` in
-`~/git/agent-config` updates the live profile. The playbook is only needed for
+`~/projects/agent-config` updates the live profile. The playbook is only needed for
 the first deploy or when the set of linked files changes.
 
 ## Deploy

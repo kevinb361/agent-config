@@ -15,7 +15,7 @@
   vars:
     agent_config_repo_url: "git@gitea.example:kevin/agent-config.git"
     agent_config_repo_version: main
-    agent_config_dir: "{{ ansible_env.HOME }}/git/agent-config"
+    agent_config_dir: "{{ ansible_env.HOME }}/projects/agent-config"
     agent_profile_dir: "{{ ansible_env.HOME }}/.agent-profile"
     agent_host_key: "{{ agent_host | default(inventory_hostname_short) }}"
     agent_manage_clone: true
