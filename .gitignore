@@ -4,3 +4,6 @@ profile/MEMORY.md
 
 # Staging artifacts from the initial pull.
 .staging-artifacts/
+
+# Stray git lock/tmp files; safe to remove.
+_to_delete/
