@@ -405,6 +405,29 @@
         label: "{{ item.item }}/AGENTS.md"
       when: item.stat.isdir | default(false)
 
+    # The generator has to live on the target: it reads host-local files the control
+    # node cannot see. It was tracked here but deployed by nothing, so an edit to the
+    # repo left every box running whatever copy it already had -- which is how Codex
+    # kept assembling a bundle with no agreement in it after the fix was committed.
+    - name: Look for a Codex installation
+      ansible.builtin.stat:
+        path: "{{ ansible_env.HOME }}/.codex"
+      register: agent_codex_dir
+
+    - name: Ensure the user bin directory exists
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/.local/bin"
+        state: directory
+        mode: "0755"
+      when: agent_codex_dir.stat.isdir | default(false)
+
+    - name: Deploy the profile sync tool where Codex is installed
+      ansible.builtin.copy:
+        src: tools/sync-agent-profile
+        dest: "{{ ansible_env.HOME }}/.local/bin/sync-agent-profile"
+        mode: "0755"
+      when: agent_codex_dir.stat.isdir | default(false)
+
     - name: Deploy the agreement to ~/AGENTS.md for non-Claude harnesses
       ansible.builtin.copy:
         src: CLAUDE.md
