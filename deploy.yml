@@ -47,6 +47,27 @@
       - CODEX.md
       - HERMES.md
 
+    # Global instruction paths for the other harnesses on this box, each verified
+    # against that harness's own documentation on 2026-09-15. None of them read
+    # ~/.claude/rules/, so without this they get the profile only when the cwd
+    # happens to sit under $HOME -- the exact dependence the rules directory
+    # exists to remove. opencode is worse than that: its documented fallback is
+    # ~/.claude/CLAUDE.md, which this play deletes, so it ends up with nothing.
+    #
+    #   pi 0.85.1   ~/.pi/agent/AGENTS.md          (also walks parents from cwd)
+    #   opencode    ~/.config/opencode/AGENTS.md   (else ~/.claude/CLAUDE.md)
+    #
+    # A host without the directory gets no file; nothing is created speculatively.
+    #
+    # Codex is deliberately not in this list. Its ~/.codex/AGENTS.md is generated
+    # by tools/sync-agent-profile, which assembles a richer bundle than this one:
+    # it runs on the target and can reach the host-local USER.local.md and
+    # MEMORY.md that the control node cannot read. Writing this bundle there
+    # would lose content.
+    agent_harness_dirs:
+      - .pi/agent
+      - .config/opencode
+
     # Skills this play owns. DESIGN.md content lives here rather than in a rules
     # file: it is only relevant to UI work, so loading it in every session was a
     # per-session cost paid for nothing.
@@ -346,6 +367,34 @@
       when: agent_remove_home_claude_md | bool
 
     # ----------------------------------------------- non-Claude harnesses ---
+
+    # ------------------------------------------------- other harnesses ---
+
+    - name: Look for other installed harnesses
+      ansible.builtin.stat:
+        path: "{{ ansible_env.HOME }}/{{ item }}"
+      loop: "{{ agent_harness_dirs }}"
+      register: agent_harness_stat
+
+    # One file per harness, because each reads only its own path. Contents match
+    # what the rules directory gives Claude, minus the host-local personal
+    # context: that file lives on the target and the control node cannot read it.
+    - name: Deploy the profile to each installed harness's global file
+      ansible.builtin.copy:
+        content: |
+          {{ lookup('file', playbook_dir + '/profile/SOUL.md') }}
+
+          {{ lookup('file', playbook_dir + '/profile/USER.md') }}
+
+          {{ lookup('file', playbook_dir + '/CLAUDE.md') }}
+
+          {{ lookup('file', agent_overlay_root + '/' + agent_host_key + '/CLAUDE.local.md') }}
+        dest: "{{ ansible_env.HOME }}/{{ item.item }}/AGENTS.md"
+        mode: "0640"
+      loop: "{{ agent_harness_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}/AGENTS.md"
+      when: item.stat.isdir | default(false)
 
     - name: Deploy the agreement to ~/AGENTS.md for non-Claude harnesses
       ansible.builtin.copy:
