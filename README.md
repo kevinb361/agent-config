@@ -35,7 +35,8 @@ skills/
   design-baseline/SKILL.md     the visual baseline, loaded on demand
 tools/
   sync-agent-profile           generates the Codex global instruction bundle
-  scrub-check.sh               fails if personal content reaches the tracked tree
+  scrub-check.sh               fails if personal content reaches the tree,
+                               its history or its commit messages
 deploy.yml                     the push playbook
 inventory.example.ini          example inventory
 ```
@@ -102,11 +103,18 @@ each host, is created empty by the playbook when absent, and is never overwritte
 The gate before any publish:
 
 ```sh
-tools/scrub-check.sh
+tools/scrub-check.sh --history
 ```
 
-It holds the term list itself rather than spelling it out here, so that documenting the
-gate cannot trip it.
+Three lanes: the working tree, every commit message, and every blob in history. The tree
+lane on its own is not enough to publish behind. Publishing ships history and messages
+too, and a tree-only gate passes a repo whose early commits still carry what the current
+tree does not.
+
+The term list is not in this repo. It lives in the private sibling as
+`scrub-patterns.txt`, found at `../agent-config-private/scrub-patterns.txt` or via
+`AGENT_SCRUB_PATTERNS`. A list kept here would be published, spelling out exactly what it
+exists to catch. A missing list fails the gate rather than passing silently.
 
 ## Verifying a deploy
 
