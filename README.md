@@ -178,6 +178,21 @@ The term list is not in this repo. It lives in the private sibling as
 `AGENT_SCRUB_PATTERNS`. A list kept here would be published, spelling out exactly what it
 exists to catch. A missing list fails the gate rather than passing silently.
 
+## Publishing
+
+Two remotes, one history. The internal Git host stays `origin` and remains the branch's
+upstream; GitHub is a second remote, pushed to deliberately.
+
+```sh
+tools/scrub-check.sh --history    # all three lanes must pass first
+git push origin main
+git push github main
+```
+
+Keeping `origin` as the upstream means a bare `git push` cannot publish by accident. The
+gate is the only thing standing between a local commit and a public one, so run it against
+history and messages, not just the tree — publishing ships all three.
+
 ## Verifying a deploy
 
 ```sh
