@@ -116,6 +116,7 @@
       loop:
         - CLAUDE.md
         - AGENTS.md
+        - .claude/CLAUDE.md
       failed_when: false
       when: not ansible_check_mode
 
@@ -293,6 +294,17 @@
     - name: Remove the superseded home agreement
       ansible.builtin.file:
         path: "{{ ansible_env.HOME }}/CLAUDE.md"
+        state: absent
+      when: agent_remove_home_claude_md | bool
+
+    # Same reasoning, one layer up. A user-scope ~/.claude/CLAUDE.md loads in every
+    # session alongside the rules directory. The one this replaced documented the
+    # old rules filenames, so after a deploy it is not merely redundant, it is
+    # actively wrong. Genuinely host-local content, such as skill registrations,
+    # belongs in that host's overlay.
+    - name: Remove the superseded user-scope agreement
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/.claude/CLAUDE.md"
         state: absent
       when: agent_remove_home_claude_md | bool
 
