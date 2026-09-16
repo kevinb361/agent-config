@@ -1,18 +1,44 @@
 # agent-config
 
-Portable AI agent configuration, deployed to every box from one repo.
+Portable AI agent configuration, pushed to every box from one repo.
+
+## Model
+
+**Push, not pull.** The control node holds this repo and writes real files to each
+target. Targets never clone and never pull.
+
+This is forced, not a preference: one target cannot resolve the internal Git host, has
+no ansible, and its home is not a Git repository. A pull-based deploy cannot reach it.
+
+Two consequences worth stating plainly:
+
+- `git pull` on a target does **not** update its live profile. The playbook is the only
+  update path.
+- A hand-edit to a deployed file is overwritten by the next run. In exchange,
+  `--check --diff` is a drift detector for free.
+
+Deployed paths are real files rather than symlinks because desktop sessions skip a user
+rules directory that is itself a symlink, or a rule file pointing outside the working
+directory. There are exactly two deliberate exceptions, both documented in `deploy.yml`.
 
 ## Layout
 
 ```
-CLAUDE.md                      common working agreement, deployed to every box
+CLAUDE.md                      shared working agreement
 profile/
-  SOUL.md                      thinking and working style
+  SOUL.md                      thinking, working and communication style
   USER.md                      durable operator facts and preferences
-  DESIGN.md                    visual baseline for generated UI
+  DESIGN.md                    visual baseline (deployed, but NOT always-on)
+  README.md                    what the profile directory is
+  adapters/                    harness-specific differences only
+skills/
+  design-baseline/SKILL.md     the visual baseline, loaded on demand
 hosts/
-  <hostname>/CLAUDE.local.md   host-specific overlay, loads after CLAUDE.md
-deploy.yml                     Ansible deploy
+  <host>/CLAUDE.local.md       host overlay
+tools/
+  sync-agent-profile           generates the Codex global instruction bundle
+backup/                        the only copy of files that live on no other repo
+deploy.yml                     the push playbook
 inventory.example.ini          example inventory
 ```
 
@@ -20,56 +46,72 @@ inventory.example.ini          example inventory
 
 | Path | Type | Source |
 |---|---|---|
-| `~/projects/agent-config` | clone | this repo |
-| `~/CLAUDE.md` | symlink | `repo/CLAUDE.md` |
-| `~/AGENTS.md` | symlink | `~/CLAUDE.md` |
-| `~/CLAUDE.local.md` | symlink | `repo/hosts/<host>/CLAUDE.local.md` |
-| `~/.agent-profile/SOUL.md` | symlink | `repo/profile/SOUL.md` |
-| `~/.agent-profile/USER.md` | symlink | `repo/profile/USER.md` |
-| `~/.agent-profile/DESIGN.md` | symlink | `repo/profile/DESIGN.md` |
-| `~/.agent-profile/MEMORY.md` | real file | created empty, never tracked, never overwritten |
+| `~/.claude/rules/00-soul.md` | real file | `profile/SOUL.md` |
+| `~/.claude/rules/01-user.md` | real file | `profile/USER.md` |
+| `~/.claude/rules/02-user-local.md` | real file | the target's own `~/private/USER.local.md` |
+| `~/.claude/rules/03-memory.md` | symlink | the target's live memory source, where declared |
+| `~/.claude/rules/10-agreement.md` | real file | `CLAUDE.md` |
+| `~/.claude/rules/11-adapter-claude.md` | real file | `profile/adapters/CLAUDE.md` |
+| `~/.claude/rules/20-host.md` | real file | `hosts/<host>/CLAUDE.local.md` |
+| `~/AGENTS.md` | real file | `CLAUDE.md`, for non-Claude harnesses |
+| `~/.agent-profile/{SOUL,USER,DESIGN,README}.md`, `adapters/` | real files | `profile/` |
+| `~/.agent-profile/MEMORY.md` | untouched | host-local, never tracked, never overwritten |
+| `~/private/USER.local.md` | untouched | host-local personal context, never tracked |
+| `~/.claude/skills/design-baseline/SKILL.md` | real file | `skills/` |
 
-Because every deployed path is a symlink into the clone, `git pull` in
-`~/projects/agent-config` updates the live profile. The playbook is only needed for
-the first deploy or when the set of linked files changes.
+The playbook also **removes** `~/CLAUDE.md`, `~/.claude/CLAUDE.md` and the five rules
+files from the previous hand-maintained layout. Leaving any of them in place would load
+the profile twice. Everything removed is backed up on the host first, under
+`~/.claude/backups/agent-config-<timestamp>/`.
+
+`DESIGN.md` is deployed to the profile directory but is deliberately **not** a rules
+file. It is ~240 lines relevant only to UI work; it lives in a skill instead.
 
 ## Deploy
 
 ```sh
-ansible-playbook -i inventory.ini deploy.yml
-ansible-playbook -i inventory.ini deploy.yml --limit dev --check --diff
+# always look first -- this is also the drift check
+ansible-playbook -i inventory.ini deploy.yml --check --diff
+
+ansible-playbook -i inventory.ini deploy.yml --limit dev
 ```
+
+The control node needs ansible, this repo, and SSH to every target. Targets need none
+of those.
 
 ## Adding a box
 
-1. `mkdir -p hosts/<hostname>` and add a `CLAUDE.local.md`
-2. Add the host to the inventory with `agent_host=<hostname>`
-3. Run the playbook
+1. `mkdir -p hosts/<name>` and write a `CLAUDE.local.md`. Say what is **not** available
+   on that host, not only what is.
+2. Add it to the inventory with `agent_host=<name>`, plus `agent_memory_source=<path>`
+   if it has a live runtime memory file.
+3. `--check --diff`, then apply.
 
-A host with no overlay directory gets the common layer only and the playbook
-says so rather than failing.
+A host with no overlay is a hard failure, not a warning. Shipping the common layer alone
+is how a box ends up carrying guidance for tooling it does not have.
 
-## How these files get loaded
+## Personal content
 
-Claude Code reads `CLAUDE.md` and `CLAUDE.local.md` from the working directory
-and every parent up to root, concatenating them root-first so the file closest
-to where you launched is read last. It does **not** read arbitrary `.md` files,
-which is why `CLAUDE.md` pulls the profile in with `@` imports rather than
-relying on the files merely existing. Import depth is capped at four hops; this
-repo uses one.
+Nothing personal is tracked here. Personal context lives in `~/private/USER.local.md` on
+each host, is created empty by the playbook when absent, and is never overwritten.
 
-`~/CLAUDE.md` loads via the parent-directory walk, so it applies to anything
-under `/home/<user>` and to nothing outside it. Work launched from `/srv`,
-`/opt`, or a mounted share gets no profile. The cwd-independent location is
-`~/.claude/CLAUDE.md` — if you move there, keep it a real file, since Cowork
-desktop sessions skip a `~/.claude/CLAUDE.md` that is itself a symlink.
+The gate before any publish:
+
+```sh
+tools/scrub-check.sh
+```
+
+It holds the term list itself rather than spelling it out here, so that documenting the
+gate cannot trip it. `backup/` and `hosts/` are outside its scope because they are
+excluded from any public remote: every file in `backup/` carries private or corporate
+content, and the overlays name real infrastructure.
 
 ## Verifying a deploy
 
 ```sh
-ls -l ~/CLAUDE.md ~/AGENTS.md ~/CLAUDE.local.md ~/.agent-profile/
+ls -la ~/.claude/rules/                     # exactly the intended set, no leftovers
+ansible-playbook -i inventory.ini deploy.yml --check   # a clean second run means no drift
 ```
 
-Then from a project directory run `/memory` inside Claude Code and confirm all
-four profile files appear. `~/.agent-profile/` is outside the working directory,
-so the imports may require approving external imports once per project.
+Then start a session and confirm it reports the expected rules and no duplicates. File
+listings prove what is on disk; only a real session proves what actually loads.
