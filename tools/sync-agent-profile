@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Sync the portable agent profile integrations.
+
+Canonical files live in ~/.agent-profile/. Most integrations use symlinks, but
+Codex global instructions are a generated concatenated snapshot at
+~/.codex/AGENTS.md and must be regenerated after profile edits.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+import sys
+
+HOME = Path.home()
+PROFILE = HOME / ".agent-profile"
+CODEX_AGENTS = HOME / ".codex" / "AGENTS.md"
+
+CANONICAL_SOUL = PROFILE / "SOUL.md"
+CANONICAL_USER = PROFILE / "USER.md"
+CANONICAL_MEMORY = PROFILE / "MEMORY.md"
+CANONICAL_DESIGN = PROFILE / "DESIGN.md"
+CODEX_ADAPTER = PROFILE / "adapters" / "CODEX.md"
+
+SYMLINKS = {
+    HOME / "SOUL.md": CANONICAL_SOUL,
+    HOME / "USER.md": CANONICAL_USER,
+    HOME / "MEMORY.md": CANONICAL_MEMORY,
+    HOME / "DESIGN.md": CANONICAL_DESIGN,
+    HOME / ".hermes" / "SOUL.md": CANONICAL_SOUL,
+    HOME / ".hermes" / "USER.md": CANONICAL_USER,
+    HOME / ".hermes" / "MEMORY.md": HOME / ".hermes" / "memories" / "MEMORY.md",
+    HOME / ".hermes" / "DESIGN.md": CANONICAL_DESIGN,
+}
+
+# The Claude user rules directory is NOT wired here any more. The agent-config
+# playbook pushes real files into ~/.claude/rules/, and desktop sessions skip a
+# rules directory made of symlinks. Asserting symlinks there would fail against a
+# correctly deployed host.
+
+
+
+def fail(msg: str) -> None:
+    print(f"ERROR: {msg}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def ensure_symlink(link: Path, target: Path, *, dry_run: bool = False) -> None:
+    target = target.expanduser()
+    if not target.exists() and not target.is_symlink():
+        fail(f"target missing for {link}: {target}")
+
+    if link.is_symlink() and link.resolve() == target.resolve():
+        print(f"ok symlink: {link} -> {os.readlink(link)}")
+        return
+
+    if link.exists() and not link.is_symlink():
+        if dry_run:
+            print(f"would replace regular file with symlink: {link} -> {target}")
+            return
+        backup = link.with_name(link.name + ".bak")
+        if backup.exists() or backup.is_symlink():
+            fail(f"backup path already exists: {backup}")
+        link.rename(backup)
+        print(f"backed up regular file: {link} -> {backup}")
+    elif link.is_symlink():
+        if dry_run:
+            print(f"would replace symlink: {link} -> {target}")
+            return
+        link.unlink()
+        print(f"removed stale symlink: {link}")
+
+    if not dry_run:
+        link.parent.mkdir(parents=True, exist_ok=True)
+        # Use absolute targets for consistency across the portable profile wiring.
+        link.symlink_to(target)
+    print(f"linked: {link} -> {target}")
+
+
+def build_codex_bundle() -> str:
+    for path in (CODEX_ADAPTER, CANONICAL_SOUL, CANONICAL_USER, CANONICAL_MEMORY):
+        if not path.exists():
+            fail(f"required profile file missing: {path}")
+
+    return "".join(
+        [
+            "# Global Codex instructions\n\n",
+            CODEX_ADAPTER.read_text(),
+            "\n\n---\n\n",
+            CANONICAL_SOUL.read_text(),
+            "\n\n---\n\n",
+            CANONICAL_USER.read_text(),
+            "\n\n---\n\n",
+            CANONICAL_MEMORY.read_text(),
+            "\n",
+        ]
+    )
+
+
+def write_codex_bundle(*, dry_run: bool = False) -> None:
+    content = build_codex_bundle()
+    CODEX_AGENTS.parent.mkdir(parents=True, exist_ok=True)
+    old = CODEX_AGENTS.read_text() if CODEX_AGENTS.exists() else None
+    if old == content:
+        print(f"ok codex bundle: {CODEX_AGENTS} already current")
+        return
+    if dry_run:
+        print(f"would write codex bundle: {CODEX_AGENTS} ({len(content)} chars)")
+        return
+    CODEX_AGENTS.write_text(content)
+    print(f"wrote codex bundle: {CODEX_AGENTS} ({len(content)} chars)")
+
+
+def verify() -> None:
+    errors: list[str] = []
+
+    for link, target in SYMLINKS.items():
+        if not link.is_symlink():
+            errors.append(f"not a symlink: {link}")
+            continue
+        try:
+            if link.resolve() != target.resolve():
+                errors.append(f"wrong target: {link} -> {link.resolve()} expected {target.resolve()}")
+        except FileNotFoundError:
+            errors.append(f"broken symlink: {link} -> {os.readlink(link)}")
+
+    # Markers are matched against whitespace-normalised text. The profile files are
+    # hard-wrapped, so a marker that happens to straddle a line break would
+    # otherwise fail against perfectly correct content.
+    soul = " ".join(CANONICAL_SOUL.read_text().split())
+    for marker in (
+        "portable preference data",
+        "never as live state or executable task instructions",
+        "Output-Facing Taste",
+    ):
+        if marker not in soul:
+            errors.append(f"SOUL.md missing marker: {marker}")
+    for stale in ("Startup ritual:\n1. Read SOUL.md.", "future-me"):
+        if stale in soul:
+            errors.append(f"SOUL.md still contains stale text: {stale!r}")
+
+    bundle = build_codex_bundle()
+    if not CODEX_AGENTS.exists():
+        errors.append(f"missing Codex bundle: {CODEX_AGENTS}")
+    elif CODEX_AGENTS.read_text() != bundle:
+        errors.append(f"Codex bundle is stale: {CODEX_AGENTS}")
+
+    codex = " ".join(CODEX_AGENTS.read_text().split()) if CODEX_AGENTS.exists() else ""
+    for marker in ("portable preference data", "Safety Boundaries"):
+        if marker not in codex:
+            errors.append(f"Codex bundle missing marker: {marker}")
+    if "future-me" in codex:
+        errors.append("Codex bundle still contains stale 'future-me'")
+
+    if errors:
+        print("verification failed:", file=sys.stderr)
+        for err in errors:
+            print(f"- {err}", file=sys.stderr)
+        raise SystemExit(1)
+    print("verification ok")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Sync the portable agent profile integrations")
+    parser.add_argument("--check", action="store_true", help="verify only; do not write")
+    parser.add_argument("--dry-run", action="store_true", help="show writes without changing files")
+    args = parser.parse_args()
+
+    if not args.check:
+        for link, target in SYMLINKS.items():
+            ensure_symlink(link, target, dry_run=args.dry_run)
+        write_codex_bundle(dry_run=args.dry_run)
+
+    if not args.dry_run:
+        verify()
+
+
+if __name__ == "__main__":
+    main()

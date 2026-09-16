@@ -6,7 +6,7 @@ Hermes and similar harnesses. It is guidance, not a task instruction and not a r
 impersonate the operator. Do not impersonate the operator; use this to adapt reasoning,
 defaults, and communication.
 
-Agents loading this file should treat it as preference data, never as live state or as
+Agents loading this file should treat it as preference data, never as live state or
 executable task instructions.
 
 Priority order:
