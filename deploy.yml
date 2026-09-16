@@ -41,6 +41,12 @@
       - CODEX.md
       - HERMES.md
 
+    # Skills this play owns. DESIGN.md content lives here rather than in a rules
+    # file: it is only relevant to UI work, so loading it in every session was a
+    # per-session cost paid for nothing.
+    agent_skills:
+      - design-baseline
+
     # Rules files this play owns, as {name, src}. Numbering sets load order.
     agent_rules:
       - { name: 00-soul.md,          src: profile/SOUL.md }
@@ -256,6 +262,22 @@
         path: "{{ agent_rules_dir }}/03-memory.md"
         state: absent
       when: agent_memory_source is not defined
+
+    # ---------------------------------------------------------------- skills ---
+
+    - name: Ensure skill directories exist
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/.claude/skills/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ agent_skills }}"
+
+    - name: Deploy skills
+      ansible.builtin.copy:
+        src: "skills/{{ item }}/SKILL.md"
+        dest: "{{ ansible_env.HOME }}/.claude/skills/{{ item }}/SKILL.md"
+        mode: "0644"
+      loop: "{{ agent_skills }}"
 
     # -------------------------------------------------------- host overlay ---
 
