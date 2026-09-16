@@ -1,0 +1,6 @@
+# Runtime memory is host-local state, never shared between boxes.
+MEMORY.md
+profile/MEMORY.md
+
+# Staging artifacts from the initial pull.
+.staging-artifacts/

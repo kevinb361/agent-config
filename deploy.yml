@@ -1,0 +1,107 @@
+---
+# Deploy the agent configuration profile to a box.
+#
+#   ansible-playbook -i inventory.example.ini deploy.yml
+#   ansible-playbook -i inventory.example.ini deploy.yml --limit dev --check --diff
+#
+# Model: the repo is cloned on each target box and every deployed path is a
+# symlink into that clone. Pulling the repo updates the live profile with no
+# second deploy step.
+
+- name: Deploy agent configuration profile
+  hosts: agent_hosts
+  gather_facts: true
+
+  vars:
+    agent_config_repo_url: "git@gitea.example:kevin/agent-config.git"
+    agent_config_repo_version: main
+    agent_config_dir: "{{ ansible_env.HOME }}/git/agent-config"
+    agent_profile_dir: "{{ ansible_env.HOME }}/.agent-profile"
+    agent_host_key: "{{ agent_host | default(inventory_hostname_short) }}"
+    agent_manage_clone: true
+    agent_shared_profile_files:
+      - SOUL.md
+      - USER.md
+      - DESIGN.md
+
+  tasks:
+    - name: Ensure repo parent directory exists
+      ansible.builtin.file:
+        path: "{{ agent_config_dir | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Clone or update agent-config repo
+      ansible.builtin.git:
+        repo: "{{ agent_config_repo_url }}"
+        dest: "{{ agent_config_dir }}"
+        version: "{{ agent_config_repo_version }}"
+        update: true
+      when: agent_manage_clone | bool
+
+    - name: Assert repo is present before linking
+      ansible.builtin.stat:
+        path: "{{ agent_config_dir }}/CLAUDE.md"
+      register: agent_repo_check
+
+    - name: Fail early when the repo is missing
+      ansible.builtin.fail:
+        msg: >-
+          {{ agent_config_dir }}/CLAUDE.md not found.
+          Clone the repo first or set agent_manage_clone=true.
+      when: not agent_repo_check.stat.exists
+
+    - name: Ensure profile directory exists
+      ansible.builtin.file:
+        path: "{{ agent_profile_dir }}"
+        state: directory
+        mode: "0750"
+
+    - name: Link shared profile files
+      ansible.builtin.file:
+        src: "{{ agent_config_dir }}/profile/{{ item }}"
+        dest: "{{ agent_profile_dir }}/{{ item }}"
+        state: link
+        force: true
+      loop: "{{ agent_shared_profile_files }}"
+
+    - name: Create host-local runtime memory if absent
+      ansible.builtin.copy:
+        content: "# Runtime Memory\n"
+        dest: "{{ agent_profile_dir }}/MEMORY.md"
+        force: false
+        mode: "0640"
+
+    - name: Link ~/CLAUDE.md to the repo
+      ansible.builtin.file:
+        src: "{{ agent_config_dir }}/CLAUDE.md"
+        dest: "{{ ansible_env.HOME }}/CLAUDE.md"
+        state: link
+        force: true
+
+    - name: Link ~/AGENTS.md to ~/CLAUDE.md
+      ansible.builtin.file:
+        src: "{{ ansible_env.HOME }}/CLAUDE.md"
+        dest: "{{ ansible_env.HOME }}/AGENTS.md"
+        state: link
+        force: true
+
+    - name: Look for a host-specific overlay
+      ansible.builtin.stat:
+        path: "{{ agent_config_dir }}/hosts/{{ agent_host_key }}/CLAUDE.local.md"
+      register: agent_host_overlay
+
+    - name: Link host-specific overlay
+      ansible.builtin.file:
+        src: "{{ agent_config_dir }}/hosts/{{ agent_host_key }}/CLAUDE.local.md"
+        dest: "{{ ansible_env.HOME }}/CLAUDE.local.md"
+        state: link
+        force: true
+      when: agent_host_overlay.stat.exists
+
+    - name: Warn when no overlay exists for this host
+      ansible.builtin.debug:
+        msg: >-
+          No hosts/{{ agent_host_key }}/CLAUDE.local.md in the repo;
+          this box gets the common layer only.
+      when: not agent_host_overlay.stat.exists
