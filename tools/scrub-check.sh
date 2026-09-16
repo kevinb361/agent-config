@@ -3,9 +3,8 @@
 #
 # Run before any publish, and after any edit to profile/USER.md.
 #
-# Scope: the tracked tree minus backup/ and hosts/, which are excluded from any
-# public remote by design -- every file in backup/ carries private or corporate
-# content, and the overlays name real infrastructure.
+# Scope: the whole tracked tree. Host overlays and host backups live in the
+# private sibling repo, so nothing here is exempt.
 #
 # This script excludes itself. A gate that matches its own pattern definition
 # reports a failure on correct content, which makes it useless.
@@ -18,8 +17,6 @@ PATTERN='REDACTED -- list moved to agent-config-private/scrub-patterns.txt'
 
 if hits=$(grep -rinE "$PATTERN" \
 	--exclude-dir=.git \
-	--exclude-dir=backup \
-	--exclude-dir=hosts \
 	--exclude="$(basename "$0")" \
 	. 2>/dev/null); then
 	echo "scrub check FAILED: personal content in the tracked tree" >&2

@@ -33,14 +33,18 @@ profile/
   adapters/                    harness-specific differences only
 skills/
   design-baseline/SKILL.md     the visual baseline, loaded on demand
-hosts/
-  <host>/CLAUDE.local.md       host overlay
 tools/
   sync-agent-profile           generates the Codex global instruction bundle
-backup/                        the only copy of files that live on no other repo
+  scrub-check.sh               fails if personal content reaches the tracked tree
 deploy.yml                     the push playbook
 inventory.example.ini          example inventory
 ```
+
+Host overlays, host backups and the real inventory live in a separate private repo,
+cloned beside this one on the control node. They name real infrastructure, so keeping
+them out of this repo is what lets it take a public remote without a scrubbing pass or a
+public/private split over the same files. `deploy.yml` finds them via
+`agent_overlay_root`, which defaults to `../agent-config-private/hosts`.
 
 ## What lands on a box
 
@@ -52,7 +56,7 @@ inventory.example.ini          example inventory
 | `~/.claude/rules/03-memory.md` | symlink | the target's live memory source, where declared |
 | `~/.claude/rules/10-agreement.md` | real file | `CLAUDE.md` |
 | `~/.claude/rules/11-adapter-claude.md` | real file | `profile/adapters/CLAUDE.md` |
-| `~/.claude/rules/20-host.md` | real file | `hosts/<host>/CLAUDE.local.md` |
+| `~/.claude/rules/20-host.md` | real file | `<private repo>/hosts/<host>/CLAUDE.local.md` |
 | `~/AGENTS.md` | real file | `CLAUDE.md`, for non-Claude harnesses |
 | `~/.agent-profile/{SOUL,USER,DESIGN,README}.md`, `adapters/` | real files | `profile/` |
 | `~/.agent-profile/MEMORY.md` | untouched | host-local, never tracked, never overwritten |
@@ -81,8 +85,8 @@ of those.
 
 ## Adding a box
 
-1. `mkdir -p hosts/<name>` and write a `CLAUDE.local.md`. Say what is **not** available
-   on that host, not only what is.
+1. In the private repo, `mkdir -p hosts/<name>` and write a `CLAUDE.local.md`. Say what
+   is **not** available on that host, not only what is.
 2. Add it to the inventory with `agent_host=<name>`, plus `agent_memory_source=<path>`
    if it has a live runtime memory file.
 3. `--check --diff`, then apply.
@@ -102,9 +106,7 @@ tools/scrub-check.sh
 ```
 
 It holds the term list itself rather than spelling it out here, so that documenting the
-gate cannot trip it. `backup/` and `hosts/` are outside its scope because they are
-excluded from any public remote: every file in `backup/` carries private or corporate
-content, and the overlays name real infrastructure.
+gate cannot trip it.
 
 ## Verifying a deploy
 

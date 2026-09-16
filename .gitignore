@@ -13,3 +13,7 @@ _to_delete/
 
 # Real inventory: holds actual hostnames. Ship inventory.example.ini instead.
 inventory.ini
+
+# Host overlays, host backups and the real inventory live in agent-config-private.
+backup/
+hosts/

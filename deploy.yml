@@ -27,6 +27,9 @@
     agent_rules_dir: "{{ ansible_env.HOME }}/.claude/rules"
     agent_backup_dir: "{{ ansible_env.HOME }}/.claude/backups"
     agent_host_key: "{{ agent_host | default(inventory_hostname_short) }}"
+    # Host overlays name real infrastructure, so they live in the private sibling
+    # repo rather than this one. Clone both side by side on the control node.
+    agent_overlay_root: "{{ playbook_dir }}/../agent-config-private/hosts"
     agent_remove_home_claude_md: true
 
     # Files this play owns inside ~/.agent-profile/. Anything else in that directory
@@ -283,14 +286,14 @@
 
     - name: Look for a host overlay
       ansible.builtin.stat:
-        path: "hosts/{{ agent_host_key }}/CLAUDE.local.md"
+        path: "{{ agent_overlay_root }}/{{ agent_host_key }}/CLAUDE.local.md"
       delegate_to: localhost
       become: false
       register: agent_host_overlay
 
     - name: Deploy the host overlay
       ansible.builtin.copy:
-        src: "hosts/{{ agent_host_key }}/CLAUDE.local.md"
+        src: "{{ agent_overlay_root }}/{{ agent_host_key }}/CLAUDE.local.md"
         dest: "{{ agent_rules_dir }}/20-host.md"
         mode: "0640"
       when: agent_host_overlay.stat.exists
@@ -298,7 +301,7 @@
     - name: Fail when a host has no overlay
       ansible.builtin.fail:
         msg: >-
-          No hosts/{{ agent_host_key }}/CLAUDE.local.md in the repo. Every host needs
+          No {{ agent_overlay_root }}/{{ agent_host_key }}/CLAUDE.local.md. Every host needs
           an overlay, if only to state what is not available on it; silently shipping
           the common layer alone is how a box ends up with guidance for tooling it
           does not have.
