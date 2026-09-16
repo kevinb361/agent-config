@@ -154,15 +154,15 @@ Use this baseline for Hermes-related UI, ops-console-style dashboards, agent coc
 
 The palette is dark graphite with moss/phosphor instrumentation and warm amber caution lights.
 
-- **Background (#0A0D0B, #0D1117):** near-black graphite surfaces for low-light use. Avoid pure black unless a terminal/canvas needs it.
-- **Surfaces (#111511, #161B22, #1C2128):** quiet layers for panels, cards, menus, filters, and table regions.
-- **Borders (#263026, #30363D):** structure through thin separators, not heavy decoration.
-- **Text (#D8E0D5, #F0F6EC):** readable off-white/gray-green. Muted text should stay readable on laptop screens; do not make metadata decorative and illegible.
-- **Primary (#8FAF6A, #B8D989):** moss/phosphor accent for primary actions, live state, selected nav, and active instrumentation.
-- **Secondary (#6F9A9A):** restrained cyan/teal for labels, links, and secondary telemetry.
-- **Warning (#C79545, #D6A24A):** amber caution for degraded states, pending attention, and confirmation prompts.
-- **Danger (#A3473E, #D86A5D):** muted red for destructive actions, critical incidents, and failed checks.
-- **Info (#58A6FF) and purple (#9F7AEA):** optional secondary chart/status colors. Use sparingly.
+- **Background (`#0A0D0B`, `#0D1117`):** near-black graphite surfaces for low-light use. Avoid pure black unless a terminal/canvas needs it.
+- **Surfaces (`#111511`, `#161B22`, `#1C2128`):** quiet layers for panels, cards, menus, filters, and table regions.
+- **Borders (`#263026`, `#30363D`):** structure through thin separators, not heavy decoration.
+- **Text (`#D8E0D5`, `#F0F6EC`):** readable off-white/gray-green. Muted text should stay readable on laptop screens; do not make metadata decorative and illegible.
+- **Primary (`#8FAF6A`, `#B8D989`):** moss/phosphor accent for primary actions, live state, selected nav, and active instrumentation.
+- **Secondary (`#6F9A9A`):** restrained cyan/teal for labels, links, and secondary telemetry.
+- **Warning (`#C79545`, `#D6A24A`):** amber caution for degraded states, pending attention, and confirmation prompts.
+- **Danger (`#A3473E`, `#D86A5D`):** muted red for destructive actions, critical incidents, and failed checks.
+- **Info (`#58A6FF`) and purple (`#9F7AEA`):** optional secondary chart/status colors. Use sparingly.
 
 Do not use visible RGB gamer gradients, candy neon, rainbow status palettes, or decorative glow. Any glow should read as instrumentation, not nightlife.
 
