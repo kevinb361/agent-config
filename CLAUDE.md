@@ -100,15 +100,19 @@ Use approved SSH/key-based access; never request credentials in chat.
 
 `~/.agent-profile/` exposes the portable profile. `SOUL.md` owns style, `USER.md` durable
 operator facts, `USER.local.md` personal facts that are never tracked, `MEMORY.md` compact
-runtime memory, and `DESIGN.md` visual defaults. Adapters contain only harness-specific
-differences.
+runtime memory, `AGREEMENT.md` this file, and `DESIGN.md` visual defaults. Adapters contain
+only harness-specific differences. The directory is self-contained on purpose: a harness
+that reads one file assembles it from here.
 
 This agreement and the profile are deployed as real files into the Claude user rules
 directory by the agent-config playbook. Deploy is push, not pull: a `git pull` on a target
 does not update the live profile, and a hand-edit to a deployed file is overwritten by the
 next run. `MEMORY.md` and `USER.local.md` are host-local and never overwritten.
 
-Non-Claude harnesses read the same bytes: the playbook also writes this agreement to
-`~/AGENTS.md`, and project `AGENTS.md` should link to its sibling `CLAUDE.md`.
+Non-Claude harnesses read the same bytes, each from its own global path. None of them read
+the Claude rules directory, so the playbook writes one file per installed harness, plus
+`~/AGENTS.md` for the ones that walk up from the working directory; project `AGENTS.md`
+should link to its sibling `CLAUDE.md`. `HARNESSES.md` in the agent-config repo records
+each harness's paths, precedence and size limits, with the docs they were verified against.
 New guidance takes effect according to each harness's loading behavior; do not restart an
 active worker or service just to refresh instructions.
