@@ -7,3 +7,6 @@ profile/MEMORY.md
 
 # Stray git lock/tmp files; safe to remove.
 _to_delete/
+
+# backup/ is deliberately TRACKED: it holds the only copies of files that live
+# on hosts with no repo path (notably work:~/CLAUDE.md). Do not ignore it.
