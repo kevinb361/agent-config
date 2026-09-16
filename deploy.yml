@@ -240,6 +240,15 @@
         mode: "0640"
       loop: "{{ agent_shared_profile_files }}"
 
+    # The agreement lives at the repo root but belongs in the profile directory on
+    # the target: ~/.agent-profile/ is what non-Claude tooling reads, and a profile
+    # missing the working agreement is style and facts with no rules attached.
+    - name: Deploy the shared agreement into the profile directory
+      ansible.builtin.copy:
+        src: CLAUDE.md
+        dest: "{{ agent_profile_dir }}/AGREEMENT.md"
+        mode: "0640"
+
     - name: Deploy harness adapters
       ansible.builtin.copy:
         src: "profile/adapters/{{ item }}"

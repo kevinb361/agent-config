@@ -16,6 +16,9 @@ update these files, and a hand-edit here is overwritten by the next deploy.
   memory source, this is a link to it rather than a copy that would immediately go stale.
 - `DESIGN.md` — visual baseline for generated tools, dashboards, consoles and mockups.
   Deliberately not loaded in every session; it is relevant only to UI work.
+- `AGREEMENT.md` — the shared working agreement, copied here from the repo root. Harnesses
+  that read a single instruction file assemble it from this directory, so the agreement has
+  to be present here and not only in the Claude rules directory.
 - `adapters/` — harness-specific differences only. Anything common belongs in the shared
   agreement or in `SOUL.md`/`USER.md`, not repeated here.
 

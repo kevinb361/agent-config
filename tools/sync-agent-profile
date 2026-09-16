@@ -21,7 +21,12 @@ CANONICAL_SOUL = PROFILE / "SOUL.md"
 CANONICAL_USER = PROFILE / "USER.md"
 CANONICAL_MEMORY = PROFILE / "MEMORY.md"
 CANONICAL_DESIGN = PROFILE / "DESIGN.md"
+CANONICAL_AGREEMENT = PROFILE / "AGREEMENT.md"
 CODEX_ADAPTER = PROFILE / "adapters" / "CODEX.md"
+
+# Host-local, never tracked, and deliberately not under PROFILE. Optional: a box
+# that has never been deployed to does not have it yet.
+HOST_LOCAL_USER = HOME / "private" / "USER.local.md"
 
 SYMLINKS = {
     HOME / "SOUL.md": CANONICAL_SOUL,
@@ -79,23 +84,56 @@ def ensure_symlink(link: Path, target: Path, *, dry_run: bool = False) -> None:
 
 
 def build_codex_bundle() -> str:
-    for path in (CODEX_ADAPTER, CANONICAL_SOUL, CANONICAL_USER, CANONICAL_MEMORY):
+    """Assemble what Codex reads globally.
+
+    Codex reads one file, so it has to carry everything the Claude rules directory
+    carries as separate files. The agreement was missing here until 2026-09-15,
+    which left Codex with style and operator facts but none of the working rules.
+
+    Codex stops adding instruction files once the chain reaches project_doc_max_bytes,
+    32 KiB by default, so this bundle is checked against that budget rather than
+    growing silently past it.
+    """
+    required = (CODEX_ADAPTER, CANONICAL_SOUL, CANONICAL_USER, CANONICAL_AGREEMENT, CANONICAL_MEMORY)
+    for path in required:
         if not path.exists():
             fail(f"required profile file missing: {path}")
 
-    return "".join(
-        [
-            "# Global Codex instructions\n\n",
-            CODEX_ADAPTER.read_text(),
-            "\n\n---\n\n",
-            CANONICAL_SOUL.read_text(),
-            "\n\n---\n\n",
-            CANONICAL_USER.read_text(),
-            "\n\n---\n\n",
-            CANONICAL_MEMORY.read_text(),
-            "\n",
-        ]
-    )
+    parts = [
+        "# Global Codex instructions\n\n",
+        CODEX_ADAPTER.read_text(),
+        "\n\n---\n\n",
+        CANONICAL_SOUL.read_text(),
+        "\n\n---\n\n",
+        CANONICAL_USER.read_text(),
+    ]
+
+    # Personal context lives on the host and is never tracked; include it when the
+    # box has been deployed to, skip it quietly when it has not.
+    if HOST_LOCAL_USER.exists():
+        parts += ["\n\n---\n\n", HOST_LOCAL_USER.read_text()]
+
+    parts += [
+        "\n\n---\n\n",
+        CANONICAL_AGREEMENT.read_text(),
+        "\n\n---\n\n",
+        CANONICAL_MEMORY.read_text(),
+        "\n",
+    ]
+
+    bundle = "".join(parts)
+
+    budget = 32 * 1024
+    size = len(bundle.encode("utf-8"))
+    if size > budget:
+        fail(
+            f"codex bundle is {size} bytes, over the {budget}-byte project_doc_max_bytes "
+            "default -- Codex would silently drop the tail. Trim the profile."
+        )
+    if size > budget * 0.8:
+        print(f"warning: codex bundle is {size} bytes, over 80% of the {budget}-byte budget")
+
+    return bundle
 
 
 def write_codex_bundle(*, dry_run: bool = False) -> None:

@@ -60,6 +60,10 @@ Docs: <https://learn.chatgpt.com/docs/agent-configuration/agents-md.md> · insta
   `project_doc_max_bytes`, 32 KiB by default. A bundle that grows past this silently loses
   its tail.
 - The instruction chain is built once per run, so edits mid-session are not picked up.
+- Because Codex reads a **single** global file, that file has to carry everything the
+  Claude rules directory carries as separate files. In this repo it is generated on the
+  target by `tools/sync-agent-profile` from `~/.agent-profile/`, and the generator refuses
+  to write a bundle over the 32 KiB budget rather than letting Codex drop the tail.
 
 ## Pi
 
