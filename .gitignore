@@ -10,3 +10,6 @@ _to_delete/
 
 # backup/ is deliberately TRACKED: it holds the only copies of files that live
 # on hosts with no repo path (notably work:~/CLAUDE.md). Do not ignore it.
+
+# Real inventory: holds actual hostnames. Ship inventory.example.ini instead.
+inventory.ini

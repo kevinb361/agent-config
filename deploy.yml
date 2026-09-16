@@ -1,79 +1,174 @@
 ---
 # Deploy the agent configuration profile to a box.
 #
-#   ansible-playbook -i inventory.example.ini deploy.yml
-#   ansible-playbook -i inventory.example.ini deploy.yml --limit dev --check --diff
+#   ansible-playbook -i inventory.ini deploy.yml --check --diff
+#   ansible-playbook -i inventory.ini deploy.yml --limit dev
 #
-# Model: the repo is cloned on each target box and every deployed path is a
-# symlink into that clone. Pulling the repo updates the live profile with no
-# second deploy step.
+# Model: PUSH. The control node holds the repo; targets never clone and never pull.
+# Every deployed path is a real file, not a symlink, with two deliberate exceptions
+# noted below. A `git pull` on a target does not update its live profile, and a
+# hand-edit to a deployed file is overwritten by the next run. Running this playbook
+# in --check --diff mode is therefore also the drift detector.
+#
+# Push rather than pull because at least one target cannot resolve the internal Git
+# host, has no ansible, and its home is not a Git repository.
+#
+# Real files rather than symlinks because desktop sessions skip a user rules
+# directory that is itself a symlink, or a rule file pointing outside the working
+# directory.
 
 - name: Deploy agent configuration profile
   hosts: agent_hosts
   gather_facts: true
 
   vars:
-    agent_deploy_confirmed: false
-    agent_config_repo_url: "git@gitea.example:kevin/agent-config.git"
-    agent_config_repo_version: main
-    agent_config_dir: "{{ ansible_env.HOME }}/projects/agent-config"
     agent_profile_dir: "{{ ansible_env.HOME }}/.agent-profile"
+    agent_private_dir: "{{ ansible_env.HOME }}/private"
+    agent_rules_dir: "{{ ansible_env.HOME }}/.claude/rules"
+    agent_backup_dir: "{{ ansible_env.HOME }}/.claude/backups"
     agent_host_key: "{{ agent_host | default(inventory_hostname_short) }}"
-    agent_manage_clone: true
+    agent_remove_home_claude_md: true
+
+    # Files this play owns inside ~/.agent-profile/. Anything else in that directory
+    # is unmanaged and must survive: dev keeps private analysis files there.
     agent_shared_profile_files:
       - SOUL.md
       - USER.md
       - DESIGN.md
+      - README.md
+    agent_adapter_files:
+      - CLAUDE.md
+      - CODEX.md
+      - HERMES.md
+
+    # Rules files this play owns, as {name, src}. Numbering sets load order.
+    agent_rules:
+      - { name: 00-soul.md,          src: profile/SOUL.md }
+      - { name: 01-user.md,          src: profile/USER.md }
+      - { name: 10-agreement.md,     src: CLAUDE.md }
+      - { name: 11-adapter-claude.md, src: profile/adapters/CLAUDE.md }
+
+    # Rules files from the previous hand-maintained layout. These are REMOVED.
+    # Without this the old and new sets both load and every rule applies twice.
+    # Enumerated on purpose: never glob the rules directory, it is not all ours.
+    agent_legacy_rules:
+      - 00-kevin-soul.md
+      - 01-kevin-user.md
+      - 02-kevin-claude-adapter.md
+      - 03-kevin-memory.md
+      - 04-kevin-design.md
+
+    # DESIGN.md is deliberately NOT a rules file. It is ~240 lines relevant only to
+    # UI work and belongs in a skill or a path-scoped rule, not in every session.
+    # It is still deployed into ~/.agent-profile/ so the path stays resolvable.
 
   tasks:
-    - name: Refuse to run while the push rewrite is in flight
-      ansible.builtin.fail:
-        msg: >-
-          deploy.yml still force-links every target and will destroy this host's
-          ~/CLAUDE.md, ~/AGENTS.md and ~/.agent-profile symlinks.
-          The push rewrite lands in Phase 3. If you really mean to run the old
-          symlink model, pass -e agent_deploy_confirmed=true.
-      when: not (agent_deploy_confirmed | bool)
+    - name: Record a deploy timestamp shared by every backup path
+      ansible.builtin.set_fact:
+        agent_backup_stamp: "{{ ansible_date_time.iso8601_basic_short }}"
 
-    - name: Ensure repo parent directory exists
+    # ---------------------------------------------------------------- backup ---
+    # Repo-side staging is not a rollback. Capture what is on the host, on the
+    # host, before anything is overwritten.
+
+    - name: Create this run's backup directory
       ansible.builtin.file:
-        path: "{{ agent_config_dir | dirname }}"
+        path: "{{ agent_backup_dir }}/agent-config-{{ agent_backup_stamp }}"
         state: directory
-        mode: "0755"
+        mode: "0700"
 
-    - name: Clone or update agent-config repo
-      ansible.builtin.git:
-        repo: "{{ agent_config_repo_url }}"
-        dest: "{{ agent_config_dir }}"
-        version: "{{ agent_config_repo_version }}"
-        update: true
-      when: agent_manage_clone | bool
+    - name: Find existing agent files worth preserving
+      ansible.builtin.find:
+        paths:
+          - "{{ agent_rules_dir }}"
+          - "{{ agent_profile_dir }}"
+        patterns: "*.md"
+        file_type: any
+        recurse: true
+      register: agent_existing_files
 
-    - name: Assert repo is present before linking
+    - name: Create backup subdirectories
+      ansible.builtin.file:
+        path: >-
+          {{ agent_backup_dir }}/agent-config-{{ agent_backup_stamp }}/{{
+          item.path | relpath(ansible_env.HOME) | dirname }}
+        state: directory
+        mode: "0700"
+      loop: "{{ agent_existing_files.files }}"
+      loop_control:
+        label: "{{ item.path | relpath(ansible_env.HOME) | dirname }}"
+      when: not ansible_check_mode
+
+    - name: Note that check mode does not write backups
+      ansible.builtin.debug:
+        msg: >-
+          check mode: skipping the backup of {{ agent_existing_files.files | length }}
+          existing files. A real run writes them to
+          {{ agent_backup_dir }}/agent-config-<stamp>/ before anything is overwritten.
+      when: ansible_check_mode
+
+    - name: Back up the existing home agreement
+      ansible.builtin.copy:
+        src: "{{ ansible_env.HOME }}/{{ item }}"
+        dest: "{{ agent_backup_dir }}/agent-config-{{ agent_backup_stamp }}/{{ item }}"
+        remote_src: true
+        mode: "0600"
+      loop:
+        - CLAUDE.md
+        - AGENTS.md
+      failed_when: false
+      when: not ansible_check_mode
+
+    - name: Back up existing rules and profile files
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: >-
+          {{ agent_backup_dir }}/agent-config-{{ agent_backup_stamp }}/{{
+          item.path | relpath(ansible_env.HOME) }}
+        remote_src: true
+        mode: "0600"
+      loop: "{{ agent_existing_files.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+      when: not ansible_check_mode
+
+    # ------------------------------------------------------------ guard rails ---
+
+    - name: Inspect the runtime memory path
       ansible.builtin.stat:
-        path: "{{ agent_config_dir }}/CLAUDE.md"
-      register: agent_repo_check
+        path: "{{ agent_profile_dir }}/MEMORY.md"
+      register: agent_memory_stat
 
-    - name: Fail early when the repo is missing
+    - name: Refuse to run when runtime memory is a dangling symlink
       ansible.builtin.fail:
         msg: >-
-          {{ agent_config_dir }}/CLAUDE.md not found.
-          Clone the repo first or set agent_manage_clone=true.
-      when: not agent_repo_check.stat.exists
+          {{ agent_profile_dir }}/MEMORY.md is a symlink whose target does not exist.
+          copy(force=false) skips a dest that exists, but a dangling link fails the
+          stat and would be replaced with a stub, costing this host its live memory
+          source. Repair the link before deploying.
+      when:
+        - agent_memory_stat.stat.islnk | default(false)
+        - not (agent_memory_stat.stat.lnk_target is defined and agent_memory_stat.stat.exists)
 
-    - name: Ensure profile directory exists
+    # --------------------------------------------------------------- layout ---
+
+    - name: Ensure directories exist
       ansible.builtin.file:
-        path: "{{ agent_profile_dir }}"
+        path: "{{ item.path }}"
         state: directory
-        mode: "0750"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ ansible_env.HOME }}/.claude", mode: "0755" }
+        - { path: "{{ agent_rules_dir }}", mode: "0755" }
+        - { path: "{{ agent_profile_dir }}", mode: "0750" }
+        - { path: "{{ agent_profile_dir }}/adapters", mode: "0750" }
+        - { path: "{{ agent_private_dir }}", mode: "0700" }
+      loop_control:
+        label: "{{ item.path }}"
 
-    - name: Link shared profile files
-      ansible.builtin.file:
-        src: "{{ agent_config_dir }}/profile/{{ item }}"
-        dest: "{{ agent_profile_dir }}/{{ item }}"
-        state: link
-        force: true
-      loop: "{{ agent_shared_profile_files }}"
+    # ---------------------------------------------------------- host-local ---
+    # Never tracked, never overwritten. Created empty so a fresh checkout on a new
+    # box resolves cleanly instead of failing on a missing file.
 
     - name: Create host-local runtime memory if absent
       ansible.builtin.copy:
@@ -82,36 +177,130 @@
         force: false
         mode: "0640"
 
-    - name: Link ~/CLAUDE.md to the repo
-      ansible.builtin.file:
-        src: "{{ agent_config_dir }}/CLAUDE.md"
-        dest: "{{ ansible_env.HOME }}/CLAUDE.md"
-        state: link
-        force: true
+    - name: Create host-local personal context if absent
+      ansible.builtin.copy:
+        content: |
+          # Personal Context
 
-    - name: Link ~/AGENTS.md to ~/CLAUDE.md
-      ansible.builtin.file:
-        src: "{{ ansible_env.HOME }}/CLAUDE.md"
-        dest: "{{ ansible_env.HOME }}/AGENTS.md"
-        state: link
-        force: true
+          Private, host-local, never tracked in agent-config.
+          The playbook creates this file when absent and never overwrites it.
+        dest: "{{ agent_private_dir }}/USER.local.md"
+        force: false
+        mode: "0600"
 
-    - name: Look for a host-specific overlay
+    # ----------------------------------------------------------- profile dir ---
+
+    - name: Deploy shared profile files
+      ansible.builtin.copy:
+        src: "profile/{{ item }}"
+        dest: "{{ agent_profile_dir }}/{{ item }}"
+        mode: "0640"
+      loop: "{{ agent_shared_profile_files }}"
+
+    - name: Deploy harness adapters
+      ansible.builtin.copy:
+        src: "profile/adapters/{{ item }}"
+        dest: "{{ agent_profile_dir }}/adapters/{{ item }}"
+        mode: "0640"
+      loop: "{{ agent_adapter_files }}"
+
+    # ------------------------------------------------------------ rules dir ---
+
+    - name: Remove rules files from the previous hand-maintained layout
+      ansible.builtin.file:
+        path: "{{ agent_rules_dir }}/{{ item }}"
+        state: absent
+      loop: "{{ agent_legacy_rules }}"
+
+    - name: Deploy rules files
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ agent_rules_dir }}/{{ item.name }}"
+        mode: "0640"
+      loop: "{{ agent_rules }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # The stub above creates this file on a real run, but check mode does not write,
+    # so on a host that has never been deployed to the source does not exist yet.
+    # Without this guard --check fails on every fresh host, which would make the
+    # dry run useless as a drift detector -- the thing it is relied on for.
+    - name: Check whether host-local personal context is present yet
       ansible.builtin.stat:
-        path: "{{ agent_config_dir }}/hosts/{{ agent_host_key }}/CLAUDE.local.md"
+        path: "{{ agent_private_dir }}/USER.local.md"
+      register: agent_user_local
+
+    - name: Deploy host-local personal context as a rule
+      ansible.builtin.copy:
+        src: "{{ agent_private_dir }}/USER.local.md"
+        dest: "{{ agent_rules_dir }}/02-user-local.md"
+        remote_src: true
+        mode: "0600"
+      when: agent_user_local.stat.exists or not ansible_check_mode
+
+    # Exception to the real-files rule. Runtime memory changes while sessions run,
+    # so a copy would be a stale snapshot the moment it lands. Where a host declares
+    # a live memory source, link to it; elsewhere this rule simply does not exist.
+    # Cost: a desktop session that skips symlinked rules will not see memory. CLI does.
+    - name: Link runtime memory into the rules directory
+      ansible.builtin.file:
+        src: "{{ agent_memory_source }}"
+        dest: "{{ agent_rules_dir }}/03-memory.md"
+        state: link
+        force: true
+      when: agent_memory_source is defined
+
+    - name: Remove the memory rule where no live source is declared
+      ansible.builtin.file:
+        path: "{{ agent_rules_dir }}/03-memory.md"
+        state: absent
+      when: agent_memory_source is not defined
+
+    # -------------------------------------------------------- host overlay ---
+
+    - name: Look for a host overlay
+      ansible.builtin.stat:
+        path: "hosts/{{ agent_host_key }}/CLAUDE.local.md"
+      delegate_to: localhost
+      become: false
       register: agent_host_overlay
 
-    - name: Link host-specific overlay
-      ansible.builtin.file:
-        src: "{{ agent_config_dir }}/hosts/{{ agent_host_key }}/CLAUDE.local.md"
-        dest: "{{ ansible_env.HOME }}/CLAUDE.local.md"
-        state: link
-        force: true
+    - name: Deploy the host overlay
+      ansible.builtin.copy:
+        src: "hosts/{{ agent_host_key }}/CLAUDE.local.md"
+        dest: "{{ agent_rules_dir }}/20-host.md"
+        mode: "0640"
       when: agent_host_overlay.stat.exists
 
-    - name: Warn when no overlay exists for this host
-      ansible.builtin.debug:
+    - name: Fail when a host has no overlay
+      ansible.builtin.fail:
         msg: >-
-          No hosts/{{ agent_host_key }}/CLAUDE.local.md in the repo;
-          this box gets the common layer only.
+          No hosts/{{ agent_host_key }}/CLAUDE.local.md in the repo. Every host needs
+          an overlay, if only to state what is not available on it; silently shipping
+          the common layer alone is how a box ends up with guidance for tooling it
+          does not have.
       when: not agent_host_overlay.stat.exists
+
+    # --------------------------------------------------- retire the old layer ---
+    # The agreement is a rules file now. A leftover ~/CLAUDE.md would load on top of
+    # it for any work started under the home directory -- the same double-load the
+    # legacy rules removal prevents. Backed up above before removal.
+    #
+    # On a host where ~/CLAUDE.md is a symlink into a project repo, this removes the
+    # link only. The project's own CLAUDE.md is a correct project file wired to the
+    # wrong layer, and stays exactly where it is.
+
+    - name: Remove the superseded home agreement
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/CLAUDE.md"
+        state: absent
+      when: agent_remove_home_claude_md | bool
+
+    # ----------------------------------------------- non-Claude harnesses ---
+
+    - name: Deploy the agreement to ~/AGENTS.md for non-Claude harnesses
+      ansible.builtin.copy:
+        src: CLAUDE.md
+        dest: "{{ ansible_env.HOME }}/AGENTS.md"
+        mode: "0644"
+        follow: false
