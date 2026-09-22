@@ -421,6 +421,26 @@
         mode: "0755"
       when: agent_codex_dir.stat.isdir | default(false)
 
+    # --------------------------------------------------- pi env vars ---
+    # Deterministic tool ordering in pi-cache-optimizer improves provider-side
+    # cache hit rates. Off by default; every managed host should have it on.
+
+    - name: Add PI_CACHE_OPTIMIZER_TOOL_ORDER comment to bashrc
+      ansible.builtin.lineinfile:
+        path: "{{ ansible_env.HOME }}/.bashrc"
+        create: false
+        state: present
+        insertafter: EOF
+        line: "# Deterministic tool ordering for pi-cache-optimizer (improves cache hits)"
+
+    - name: Set PI_CACHE_OPTIMIZER_TOOL_ORDER in bashrc
+      ansible.builtin.lineinfile:
+        path: "{{ ansible_env.HOME }}/.bashrc"
+        create: false
+        state: present
+        insertafter: "pi-cache-optimizer"
+        line: "export PI_CACHE_OPTIMIZER_TOOL_ORDER=1"
+
     - name: Deploy the profile sync tool where Codex is installed
       ansible.builtin.copy:
         src: tools/sync-agent-profile
