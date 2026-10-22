@@ -51,6 +51,8 @@ profile/
   adapters/                    harness-specific differences only
 skills/
   design-baseline/SKILL.md     the visual baseline, loaded on demand
+  security-audit/              vendored upstream skill, pinned (VENDORED.md);
+                               not deployed by the playbook
 tools/
   sync-agent-profile           regenerates the Codex instruction snapshot; the
                                playbook does not run it, see below
