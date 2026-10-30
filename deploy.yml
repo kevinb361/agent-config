@@ -448,9 +448,46 @@
         mode: "0755"
       when: agent_codex_dir.stat.isdir | default(false)
 
+    # Hermes reads AGENTS.md walking up from its working directory; this is its copy.
+    # Claude Code would read it too, which the claudeMdExcludes task below prevents.
     - name: Deploy the agreement to ~/AGENTS.md for non-Claude harnesses
       ansible.builtin.copy:
         src: CLAUDE.md
         dest: "{{ ansible_env.HOME }}/AGENTS.md"
         mode: "0644"
         follow: false
+
+    # Claude Code 2.1.277+ reads AGENTS.md itself whenever no CLAUDE.md sits in or
+    # above the working directory, which is every session under $HOME because this
+    # play removes ~/CLAUDE.md. The file above then loads on top of the identical
+    # 10-agreement.md rule: the agreement twice, every session. claudeMdExcludes
+    # takes absolute paths, so this one entry drops only ~/AGENTS.md; Hermes still
+    # reads it and project AGENTS.md files still load.
+    #
+    # settings.json is user-owned and holds secrets, so the play merges one key and
+    # never templates the file, keeps the contents out of the log, writes only when
+    # the entry is missing (the rewrite normalises formatting once, not every run),
+    # and fails rather than overwriting a file that does not parse.
+    - name: Read Claude Code user settings
+      ansible.builtin.slurp:
+        path: "{{ ansible_env.HOME }}/.claude/settings.json"
+      register: agent_claude_settings_raw
+      failed_when: false
+      no_log: true
+
+    - name: Exclude ~/AGENTS.md from Claude Code's instruction load
+      ansible.builtin.copy:
+        content: >-
+          {{ agent_claude_settings
+             | combine({'claudeMdExcludes':
+                 agent_claude_settings.claudeMdExcludes | default([]) + [agent_home_agents_md]})
+             | to_json(indent=2, ensure_ascii=False) }}
+        dest: "{{ ansible_env.HOME }}/.claude/settings.json"
+        backup: true
+      vars:
+        agent_home_agents_md: "{{ ansible_env.HOME }}/AGENTS.md"
+        agent_claude_settings: "{{ agent_claude_settings_raw.content | b64decode | from_json }}"
+      when:
+        - agent_claude_settings_raw.content is defined
+        - agent_home_agents_md not in (agent_claude_settings.claudeMdExcludes | default([]))
+      no_log: true

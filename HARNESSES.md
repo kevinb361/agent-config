@@ -32,8 +32,13 @@ Docs: <https://code.claude.com/docs/en/memory> · <https://code.claude.com/docs/
   nothing may depend on them. State precedence in the text of the file.
 - `CLAUDE.md` files are concatenated from the filesystem root down to the working
   directory. `@path` imports expand at launch, to a maximum depth of four hops.
-- Claude Code reads `CLAUDE.md`, **not** `AGENTS.md`. To serve both, make `AGENTS.md` a
-  symlink to `CLAUDE.md`, or have `CLAUDE.md` import it with `@AGENTS.md`.
+- Since 2.1.277 Claude Code also reads `AGENTS.md`, but only when no `CLAUDE.md`,
+  `.claude/CLAUDE.md` or `CLAUDE.local.md` sits in or above the working directory;
+  `~/.claude/CLAUDE.md` and rules files do not count. Under `$HOME` that is every session,
+  because the deploy removes `~/CLAUDE.md`, so `~/AGENTS.md` loaded on top of the identical
+  `10-agreement.md` rule. The deploy now adds `~/AGENTS.md` to `claudeMdExcludes` in
+  `~/.claude/settings.json`; the setting takes absolute paths and applies to `AGENTS.md`.
+  Verified against the memory docs and `/context` on 2.1.314, 2026-10-30.
 - Cowork desktop sessions skip a `~/.claude/CLAUDE.md` that is itself a symlink, and a
   symlinked rules directory or rule file pointing outside the working directory. The CLI
   loads them normally. This is why everything here is deployed as a real file.
@@ -133,9 +138,10 @@ Plain Markdown at the repository root, no required frontmatter, nested files sup
 the nearest one taking precedence. Stewarded by the Agentic AI Foundation under the Linux
 Foundation, and claimed by 20+ agents.
 
-Treat the list of supporting agents as a claim to verify, not a fact. It lists Claude Code,
-whose own documentation says it reads `CLAUDE.md` and not `AGENTS.md`. Where a vendor's
-documentation and this convention disagree, the vendor's wins.
+Treat the list of supporting agents as a claim to verify, not a fact. Claude Code's
+documentation said it read `CLAUDE.md` and not `AGENTS.md` until 2.1.277 changed that, so
+re-check a vendor's docs rather than this table. Where a vendor's documentation and this
+convention disagree, the vendor's wins.
 
 ## Adding a harness to the deploy
 
